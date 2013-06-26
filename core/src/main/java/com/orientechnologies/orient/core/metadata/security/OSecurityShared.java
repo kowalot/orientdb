@@ -478,7 +478,7 @@ public class OSecurityShared extends OSharedResourceAdaptive implements OSecurit
       if (p == null)
         p = userClass.createProperty("name", OType.STRING).setMandatory(true).setNotNull(true);
 
-      if (userClass.getInvolvedIndexes("name") == null)
+      if (userClass.getInvolvedIndexes("name").isEmpty())
         p.createIndex(INDEX_TYPE.UNIQUE);
 
       // ROLE
@@ -491,7 +491,7 @@ public class OSecurityShared extends OSharedResourceAdaptive implements OSecurit
       if (p == null)
         p = roleClass.createProperty("name", OType.STRING).setMandatory(true).setNotNull(true);
 
-      if (roleClass.getInvolvedIndexes("name") == null)
+      if (roleClass.getInvolvedIndexes("name").isEmpty())
         p.createIndex(INDEX_TYPE.UNIQUE);
 
     }
