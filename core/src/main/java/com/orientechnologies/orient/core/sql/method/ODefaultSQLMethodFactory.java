@@ -90,7 +90,7 @@ public class ODefaultSQLMethodFactory implements OSQLMethodFactory {
   }
 
   @Override
-  public boolean hasMethod(String iName) {
+  public boolean hasMethod(final String iName) {
     return methods.containsKey(iName);
   }
 
@@ -100,7 +100,7 @@ public class ODefaultSQLMethodFactory implements OSQLMethodFactory {
   }
 
   @Override
-  public OSQLMethod createMethod(String name) throws OCommandExecutionException {
+  public OSQLMethod createMethod(final String name) throws OCommandExecutionException {
     final Object m = methods.get(name);
     final OSQLMethod method;
 
