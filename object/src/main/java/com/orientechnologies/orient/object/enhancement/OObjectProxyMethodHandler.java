@@ -27,6 +27,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
 import javassist.util.proxy.MethodHandler;
 import javassist.util.proxy.Proxy;
 import javassist.util.proxy.ProxyObject;
@@ -41,6 +42,9 @@ import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.db.record.ORecordLazyList;
 import com.orientechnologies.orient.core.db.record.ORecordLazyMap;
 import com.orientechnologies.orient.core.db.record.ORecordLazySet;
+import com.orientechnologies.orient.core.db.record.OTrackedList;
+import com.orientechnologies.orient.core.db.record.OTrackedMap;
+import com.orientechnologies.orient.core.db.record.OTrackedSet;
 import com.orientechnologies.orient.core.exception.OSerializationException;
 import com.orientechnologies.orient.core.hook.ORecordHook.TYPE;
 import com.orientechnologies.orient.core.id.ORID;
@@ -580,7 +584,9 @@ public class OObjectProxyMethodHandler implements MethodHandler {
   @SuppressWarnings({ "unchecked", "rawtypes" })
   protected Object manageMapLoad(final Field f, final Object self, Object value, final boolean customSerialization) {
     final Class genericType = OReflectionHelper.getGenericMultivalueType(f);
-    if (value instanceof ORecordLazyMap) {
+    if (value instanceof ORecordLazyMap
+        || (value instanceof OTrackedMap<?> && !OReflectionHelper.isJavaType(genericType) && !customSerialization && !genericType
+            .isEnum())) {
       value = new OObjectLazyMap(self, (ORecordLazyMap) value, OObjectEntitySerializer.isCascadeDeleteField(self.getClass(),
           f.getName()));
     } else if (customSerialization) {
@@ -594,10 +600,15 @@ public class OObjectProxyMethodHandler implements MethodHandler {
   @SuppressWarnings({ "unchecked", "rawtypes" })
   protected Object manageCollectionLoad(final Field f, final Object self, Object value, final boolean customSerialization) {
     final Class genericType = OReflectionHelper.getGenericMultivalueType(f);
-    if (value instanceof ORecordLazyList) {
-      value = new OObjectLazyList(self, (ORecordLazyList) value, OObjectEntitySerializer.isCascadeDeleteField(self.getClass(),
+    if (value instanceof ORecordLazyList
+        || (value instanceof OTrackedList<?> && !OReflectionHelper.isJavaType(genericType) && !customSerialization && !genericType
+            .isEnum())) {
+      value = new OObjectLazyList(self, (List<OIdentifiable>) value, OObjectEntitySerializer.isCascadeDeleteField(self.getClass(),
           f.getName()));
-    } else if (value instanceof ORecordLazySet || value instanceof OMVRBTreeRIDSet) {
+    } else if (value instanceof ORecordLazySet
+        || value instanceof OMVRBTreeRIDSet
+        || (value instanceof OTrackedSet<?> && !OReflectionHelper.isJavaType(genericType) && !customSerialization && !genericType
+            .isEnum())) {
       value = new OObjectLazySet(self, (Set) value, OObjectEntitySerializer.isCascadeDeleteField(self.getClass(), f.getName()));
     } else if (customSerialization) {
       if (value instanceof List<?>) {
