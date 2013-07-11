@@ -18,6 +18,7 @@ package com.orientechnologies.orient.test.database.auto;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.ConcurrentModificationException;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -25,6 +26,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
 import javassist.util.proxy.Proxy;
 
 import org.testng.Assert;
@@ -33,6 +35,12 @@ import org.testng.annotations.Test;
 
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.orient.core.db.object.OLazyObjectSetInterface;
+import com.orientechnologies.orient.core.db.record.ORecordLazyList;
+import com.orientechnologies.orient.core.db.record.ORecordLazyMap;
+import com.orientechnologies.orient.core.db.record.ORecordLazySet;
+import com.orientechnologies.orient.core.db.record.OTrackedList;
+import com.orientechnologies.orient.core.db.record.OTrackedMap;
+import com.orientechnologies.orient.core.db.record.OTrackedSet;
 import com.orientechnologies.orient.core.exception.OQueryParsingException;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.id.ORecordId;
@@ -41,13 +49,16 @@ import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.record.impl.ORecordBytes;
 import com.orientechnologies.orient.core.sql.query.OSQLSynchQuery;
 import com.orientechnologies.orient.core.tx.OTransaction.TXTYPE;
+import com.orientechnologies.orient.core.type.tree.OMVRBTreeRIDSet;
 import com.orientechnologies.orient.object.db.ODatabaseObjectTx;
 import com.orientechnologies.orient.object.db.OObjectDatabasePool;
 import com.orientechnologies.orient.object.db.OObjectDatabaseTx;
 import com.orientechnologies.orient.object.iterator.OObjectIteratorClass;
 import com.orientechnologies.orient.object.iterator.OObjectIteratorCluster;
+import com.orientechnologies.orient.test.domain.base.Agenda;
 import com.orientechnologies.orient.test.domain.base.EmbeddedChild;
 import com.orientechnologies.orient.test.domain.base.EnumTest;
+import com.orientechnologies.orient.test.domain.base.Event;
 import com.orientechnologies.orient.test.domain.base.IdObject;
 import com.orientechnologies.orient.test.domain.base.Instrument;
 import com.orientechnologies.orient.test.domain.base.JavaComplexTestClass;
@@ -193,6 +204,147 @@ public class CRUDObjectPhysicalTest {
     Assert.assertEquals(loadedJavaObj.getEnumeration(), EnumTest.ENUM2);
     Assert.assertTrue(loadedJavaObj.getTestAnonymous() instanceof JavaTestInterface);
     Assert.assertEquals(loadedJavaObj.getTestAnonymous().getNumber(), -1);
+  }
+
+  @Test(dependsOnMethods = "testSimpleTypes")
+  public void collectionsDocumentTypeTestPhaseOne() {
+    database = OObjectDatabasePool.global().acquire(url, "admin", "admin");
+
+    try {
+      JavaComplexTestClass a = database.newInstance(JavaComplexTestClass.class);
+
+      for (int i = 0; i < 3; i++) {
+        a.getList().add(new Child());
+        a.getSet().add(new Child());
+        a.getChildren().put("" + i, new Child());
+      }
+      a = database.save(a);
+      ORID rid = database.getIdentity(a);
+
+      database.close();
+
+      database = OObjectDatabasePool.global().acquire(url, "admin", "admin");
+      List<JavaComplexTestClass> agendas = database.query(new OSQLSynchQuery<JavaComplexTestClass>("SELECT FROM " + rid));
+      JavaComplexTestClass testLoadedEntity = agendas.get(0);
+
+      ODocument doc = database.getRecordByUserObject(testLoadedEntity, false);
+
+      checkCollectionImplementations(doc);
+
+      testLoadedEntity = database.save(testLoadedEntity);
+
+      database.freeze(false);
+      database.release();
+
+      testLoadedEntity = database.reload(testLoadedEntity, "*:-1", true);
+
+      doc = database.getRecordByUserObject(testLoadedEntity, false);
+
+      checkCollectionImplementations(doc);
+    } finally {
+      database.close();
+    }
+  }
+
+  @Test(dependsOnMethods = "collectionsDocumentTypeTestPhaseOne")
+  public void collectionsDocumentTypeTestPhaseTwo() {
+    database = OObjectDatabasePool.global().acquire(url, "admin", "admin");
+    try {
+      JavaComplexTestClass a = database.newInstance(JavaComplexTestClass.class);
+
+      for (int i = 0; i < 10; i++) {
+        a.getList().add(new Child());
+        a.getSet().add(new Child());
+        a.getChildren().put("" + i, new Child());
+      }
+      a = database.save(a);
+      ORID rid = database.getIdentity(a);
+
+      database.close();
+
+      database = OObjectDatabasePool.global().acquire(url, "admin", "admin");
+      List<JavaComplexTestClass> agendas = database.query(new OSQLSynchQuery<JavaComplexTestClass>("SELECT FROM " + rid));
+      JavaComplexTestClass testLoadedEntity = agendas.get(0);
+
+      ODocument doc = database.getRecordByUserObject(testLoadedEntity, false);
+      checkCollectionImplementations(doc);
+
+      testLoadedEntity = database.save(testLoadedEntity);
+
+      database.freeze(false);
+      database.release();
+
+      testLoadedEntity = database.reload(testLoadedEntity, "*:-1", true);
+
+      doc = database.getRecordByUserObject(testLoadedEntity, false);
+
+      checkCollectionImplementations(doc);
+
+    } finally {
+      database.close();
+    }
+  }
+
+  @Test(dependsOnMethods = "collectionsDocumentTypeTestPhaseTwo")
+  public void collectionsDocumentTypeTestPhaseThree() {
+    database = OObjectDatabasePool.global().acquire(url, "admin", "admin");
+    try {
+      JavaComplexTestClass a = database.newInstance(JavaComplexTestClass.class);
+
+      for (int i = 0; i < 100; i++) {
+        a.getList().add(new Child());
+        a.getSet().add(new Child());
+        a.getChildren().put("" + i, new Child());
+      }
+      a = database.save(a);
+      ORID rid = database.getIdentity(a);
+
+      database.close();
+
+      database = OObjectDatabasePool.global().acquire(url, "admin", "admin");
+      List<JavaComplexTestClass> agendas = database.query(new OSQLSynchQuery<JavaComplexTestClass>("SELECT FROM " + rid));
+      JavaComplexTestClass testLoadedEntity = agendas.get(0);
+
+      ODocument doc = database.getRecordByUserObject(testLoadedEntity, false);
+      checkCollectionImplementations(doc);
+
+      testLoadedEntity = database.save(testLoadedEntity);
+
+      database.freeze(false);
+      database.release();
+
+      testLoadedEntity = database.reload(testLoadedEntity, "*:-1", true);
+
+      doc = database.getRecordByUserObject(testLoadedEntity, false);
+
+      checkCollectionImplementations(doc);
+
+    } finally {
+      database.close();
+    }
+  }
+
+  protected boolean checkCollectionImplementations(ODocument doc) {
+    Object collectionObj = doc.field("list");
+    boolean validImplementation = (collectionObj instanceof OTrackedList<?>) || (doc.field("list") instanceof ORecordLazyList);
+    if (!validImplementation) {
+      Assert.fail("Document list implementation " + collectionObj.getClass().getName()
+          + " not compatible with current Object Database loading management");
+    }
+    collectionObj = doc.field("set");
+    validImplementation = (collectionObj instanceof OTrackedSet<?>) || (collectionObj instanceof ORecordLazySet)
+        || (collectionObj instanceof OMVRBTreeRIDSet);
+    if (!validImplementation) {
+      Assert.fail("Document set implementation " + collectionObj.getClass().getName()
+          + " not compatible with current Object Database management");
+    }
+    collectionObj = doc.field("children");
+    validImplementation = (collectionObj instanceof OTrackedMap<?>) || (collectionObj instanceof ORecordLazyMap);
+    if (!validImplementation) {
+      Assert.fail("Document map implementation " + collectionObj.getClass().getName()
+          + " not compatible with current Object Database management");
+    }
+    return validImplementation;
   }
 
   @Test(dependsOnMethods = "testSimpleTypes")
@@ -429,6 +581,48 @@ public class CRUDObjectPhysicalTest {
   }
 
   @Test(dependsOnMethods = "listObjectsLinkTest")
+  public void listObjectsIterationTest() {
+    database = OObjectDatabasePool.global().acquire(url, "admin", "admin");
+
+    Agenda a = database.newInstance(Agenda.class);
+
+    for (int i = 0; i < 10; i++) {
+      a.getEvents().add(database.newInstance(Event.class));
+    }
+    a = database.save(a);
+    ORID rid = database.getIdentity(a);
+
+    database.close();
+
+    database = OObjectDatabasePool.global().acquire(url, "admin", "admin");
+    List<Agenda> agendas = database.query(new OSQLSynchQuery<Agenda>("SELECT FROM " + rid));
+    Agenda agenda = agendas.get(0);
+    for (Event e : agenda.getEvents()) {
+      // NO NEED TO DO ANYTHING, JUST NEED TO ITERATE THE LIST
+    }
+
+    agenda = database.save(agenda);
+
+    database.freeze(false);
+    database.release();
+
+    agenda = database.reload(agenda, "*:-1", true);
+
+    try {
+      agenda.getEvents();
+      agenda.getEvents().size();
+      for (int i = 0; i < agenda.getEvents().size(); i++) {
+        Event e = agenda.getEvents().get(i);
+        // NO NEED TO DO ANYTHING, JUST NEED TO ITERATE THE LIST
+      }
+    } catch (ConcurrentModificationException cme) {
+      Assert.fail("Error iterating Object list", cme);
+    }
+
+    database.close();
+  }
+
+  @Test(dependsOnMethods = "listObjectsIterationTest")
   public void mapObjectsListEmbeddedTest() {
     database = OObjectDatabasePool.global().acquire(url, "admin", "admin");
     List<Child> cresult = database.query(new OSQLSynchQuery<Child>("select * from Child"));
