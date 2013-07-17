@@ -21,6 +21,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -431,18 +432,27 @@ public class OObjectProxyMethodHandler implements MethodHandler {
   protected Object manageArraySave(final String iFieldName, final Object[] value) {
     if (value.length > 0) {
       final Object o = ((Object[]) value)[0];
-      if (o instanceof Proxy) {
-        ODocument[] newValue = new ODocument[value.length];
-        for (int i = 0; i < value.length; i++) {
-          newValue[i] = value[i] != null ? OObjectEntitySerializer.getDocument((Proxy) value[i]) : null;
-        }
+      if (o instanceof Proxy || o.getClass().isEnum()) {
+        Object[] newValue = new Object[value.length];
+        convertArray(value, newValue, o.getClass().isEnum());
         doc.field(iFieldName, newValue);
       }
     }
     return value;
   }
 
-  @SuppressWarnings({ "unchecked", "rawtypes" })
+  @SuppressWarnings("rawtypes")
+  protected void convertArray(final Object[] value, Object[] newValue, boolean isEnum) {
+    for (int i = 0; i < value.length; i++) {
+      if (isEnum) {
+        newValue[i] = value[i] != null ? ((Enum) value[i]).name() : null;
+      } else {
+        newValue[i] = value[i] != null ? OObjectEntitySerializer.getDocument((Proxy) value[i]) : null;
+      }
+    }
+  }
+
+  @SuppressWarnings({ "rawtypes", "unchecked" })
   protected Object manageMapSave(final Object self, final Field f, Map<?, ?> value, final boolean customSerialization) {
     final Class genericType = OReflectionHelper.getGenericMultivalueType(f);
     if (customSerialization) {
@@ -550,7 +560,7 @@ public class OObjectProxyMethodHandler implements MethodHandler {
     } else if (docValue instanceof Map<?, ?>) {
       docValue = manageMapLoad(f, self, docValue, customSerialization);
     } else if (docValue.getClass().isArray() && !docValue.getClass().getComponentType().isPrimitive()) {
-      docValue = manageArrayLoad(docValue);
+      docValue = manageArrayLoad(docValue, f);
     } else if (customSerialization) {
       docValue = OObjectEntitySerializer.deserializeFieldValue(OObjectEntitySerializer.getField(fieldName, self.getClass())
           .getType(), docValue);
@@ -566,9 +576,10 @@ public class OObjectProxyMethodHandler implements MethodHandler {
     return docValue;
   }
 
-  protected Object manageArrayLoad(Object value) {
+  @SuppressWarnings({ "rawtypes", "unchecked" })
+  protected Object manageArrayLoad(Object value, Field f) {
     if (((Object[]) value).length > 0) {
-      final Object o = ((Object[]) value)[0];
+      Object o = ((Object[]) value)[0];
       if (o instanceof OIdentifiable) {
         Object[] newValue = new Object[((Object[]) value).length];
         for (int i = 0; i < ((Object[]) value).length; i++) {
@@ -576,6 +587,20 @@ public class OObjectProxyMethodHandler implements MethodHandler {
           newValue[i] = OObjectEntitySerializer.getDocument((Proxy) doc);
         }
         value = newValue;
+      } else {
+        final Class genericType = OReflectionHelper.getGenericMultivalueType(f);
+        if (genericType.isEnum()) {
+          Object newValue = Array.newInstance(genericType, ((Object[]) value).length);
+          for (int i = 0; i < ((Object[]) value).length; i++) {
+            o = ((Object[]) value)[i];
+            if (o instanceof Number)
+              o = genericType.getEnumConstants()[((Number) o).intValue()];
+            else
+              o = Enum.valueOf(genericType, o.toString());
+            ((Enum[]) newValue)[i] = (Enum) o;
+          }
+          value = newValue;
+        }
       }
     }
     return value;
