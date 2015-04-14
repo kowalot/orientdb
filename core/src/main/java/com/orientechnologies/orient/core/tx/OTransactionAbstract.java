@@ -114,14 +114,34 @@ public abstract class OTransactionAbstract implements OTransaction {
     // if (locks.containsKey(rid))
     // throw new IllegalStateException("Record " + rid + " is already locked");
 
-    if (iLockingStrategy == OStorage.LOCKING_STRATEGY.KEEP_EXCLUSIVE_LOCK)
-      ((OAbstractPaginatedStorage) stg.getUnderlying()).acquireWriteLock(rid);
-    else
-      ((OAbstractPaginatedStorage) stg.getUnderlying()).acquireReadLock(rid);
+    final boolean  isLockAcquired = locks.containsKey(rid);
+    final OStorage.LOCKING_STRATEGY currentLock =  isLockAcquired ? locks.get(rid) : OStorage.LOCKING_STRATEGY.NONE;
 
-    locks.put(rid, iLockingStrategy);
+    if ( iLockingStrategy == OStorage.LOCKING_STRATEGY.KEEP_EXCLUSIVE_LOCK && currentLock!= OStorage.LOCKING_STRATEGY.KEEP_EXCLUSIVE_LOCK)
+    // acquire lock only if no locks or non-EX is already held
+    {
+      ((OAbstractPaginatedStorage) stg.getUnderlying()).acquireWriteLock(rid);
+      locks.put(rid, iLockingStrategy);
+    }
+    else
+      if ( iLockingStrategy == OStorage.LOCKING_STRATEGY.KEEP_SHARED_LOCK && currentLock != OStorage.LOCKING_STRATEGY.KEEP_EXCLUSIVE_LOCK)
+        // only upgrade to EX lock is possible
+      {
+        ((OAbstractPaginatedStorage) stg.getUnderlying()).acquireReadLock(rid);
+        locks.put(rid, iLockingStrategy);
+      }
+
+
     return this;
   }
+
+  @Override
+  public boolean upgradeLockIfNeeded(final OIdentifiable iRecord,OStorage.LOCKING_STRATEGY requestedLock ) {
+    // Should be implemented when UPDATE lock will be introduced
+    return true;
+  }
+
+
 
   @Override
   public boolean isLockedRecord(final OIdentifiable iRecord) {

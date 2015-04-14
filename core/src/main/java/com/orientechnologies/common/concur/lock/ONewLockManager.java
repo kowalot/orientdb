@@ -20,6 +20,8 @@
 
 package com.orientechnologies.common.concur.lock;
 
+import com.googlecode.concurentlocks.ReentrantReadWriteUpdateLock;
+
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
@@ -100,7 +102,7 @@ public class ONewLockManager<T> {
     } else {
       ReadWriteLock[] lcks = new ReadWriteLock[CONCURRENCY_LEVEL];
       for (int i = 0; i < lcks.length; i++)
-        lcks[i] = new ReentrantReadWriteLock();
+        lcks[i] = new ReentrantReadWriteUpdateLock();
 
       locks = lcks;
       spinLocks = null;

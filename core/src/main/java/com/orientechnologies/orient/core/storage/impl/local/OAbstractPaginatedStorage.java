@@ -1770,6 +1770,7 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract impleme
       break;
 
     case KEEP_EXCLUSIVE_LOCK:
+      rid.unlock();
     case NONE:
     case KEEP_SHARED_LOCK:
       // DO NOTHING

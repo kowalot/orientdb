@@ -153,6 +153,8 @@ public interface OTransaction {
 
   public OTransaction unlockRecord(OIdentifiable iRecord);
 
+  public boolean upgradeLockIfNeeded(final OIdentifiable iRecord,OStorage.LOCKING_STRATEGY requestedLock );
+
   public HashMap<ORID, OStorage.LOCKING_STRATEGY> getLockedRecords();
 
   public int getEntryCount();

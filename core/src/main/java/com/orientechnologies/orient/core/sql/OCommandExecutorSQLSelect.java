@@ -446,6 +446,55 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
     return true;
   }
 
+
+
+  private OCommandExecutorSQLSelect  parentExecutor;
+  protected ORecord fetchAndLockRecord(final OIdentifiable id,OStorage.LOCKING_STRATEGY requestedLockingStrategy){
+      ORecord record =  null;
+      LOCKING_STRATEGY loadLockingStrategy = requestedLockingStrategy;
+
+        if (id instanceof ORecord) {
+          record = (ORecord) id;
+
+          // LOCK THE RECORD IF NEEDED
+          if (requestedLockingStrategy == OStorage.LOCKING_STRATEGY.KEEP_EXCLUSIVE_LOCK) {
+            record.lock(true);
+          } else if (requestedLockingStrategy == OStorage.LOCKING_STRATEGY.KEEP_SHARED_LOCK) {
+            record.lock(false);
+          }
+
+        } else {
+          boolean useNoCache = noCache;
+          if (requestedLockingStrategy == LOCKING_STRATEGY.KEEP_EXCLUSIVE_LOCK
+                  || requestedLockingStrategy == LOCKING_STRATEGY.KEEP_SHARED_LOCK) {
+            // FORCE NO CACHE
+            useNoCache = true;
+            // Acquiring requested lock
+            getDatabase().getTransaction().lockRecord(id,requestedLockingStrategy);
+            loadLockingStrategy = LOCKING_STRATEGY.NONE;
+          }
+
+
+          record = getDatabase().load(id.getIdentity(), null, useNoCache, false,loadLockingStrategy);// We use LOCKING_STRATEGY.DEFAULT because lock has been acquired already
+          if (id instanceof OContextualRecordId && ((OContextualRecordId) id).getContext() != null) {
+            Map<String, Object> ridContext = ((OContextualRecordId) id).getContext();
+            for (String key : ridContext.keySet()) {
+              context.setVariable(key, ridContext.get(key));
+            }
+          }
+        }
+      return record;
+  }
+  protected void releaseLockRecord(final ORecord record,OStorage.LOCKING_STRATEGY appliedLockingStrategy){
+    if (record != null && appliedLockingStrategy != null && record.isLocked()) {
+      // CONTEXT LOCK: lock must be released (no matter if filtered or not)
+      if (appliedLockingStrategy == LOCKING_STRATEGY.KEEP_EXCLUSIVE_LOCK
+              || appliedLockingStrategy == LOCKING_STRATEGY.KEEP_SHARED_LOCK) {
+        record.unlock();
+      }
+    }
+  }
+
   protected boolean executeSearchRecord(final OIdentifiable id) {
     if (Thread.interrupted()) {
       throw new OCommandExecutionException("The select execution has been interrupted");
@@ -461,62 +510,25 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
     final OStorage.LOCKING_STRATEGY localLockingStrategy = contextLockingStrategy != null ? contextLockingStrategy
         : lockingStrategy;
 
+    // will use UPDATE lock if it's needed to keep exclusive_lock later when record is matched - NOT used yet until UPDATE is introduced
+    final OStorage.LOCKING_STRATEGY traversingLockingStrategy =  localLockingStrategy;
+
     ORecord record = null;
     try {
-      if (id instanceof ORecord) {
-        record = (ORecord) id;
-
-        // LOCK THE RECORD IF NEEDED
-        if (localLockingStrategy == OStorage.LOCKING_STRATEGY.KEEP_EXCLUSIVE_LOCK) {
-          record.lock(true);
-        } else if (localLockingStrategy == OStorage.LOCKING_STRATEGY.KEEP_SHARED_LOCK) {
-          record.lock(false);
-        }
-
-      } else {
-        boolean useNoCache = noCache;
-
-        if (localLockingStrategy == LOCKING_STRATEGY.KEEP_EXCLUSIVE_LOCK
-            || localLockingStrategy == LOCKING_STRATEGY.KEEP_SHARED_LOCK)
-          // FORCE NO CACHE
-          useNoCache = true;
-
-        record = getDatabase().load(id.getIdentity(), null, useNoCache, false, localLockingStrategy);
-        if (id instanceof OContextualRecordId && ((OContextualRecordId) id).getContext() != null) {
-          Map<String, Object> ridContext = ((OContextualRecordId) id).getContext();
-          for (String key : ridContext.keySet()) {
-            context.setVariable(key, ridContext.get(key));
-          }
-        }
-      }
-
+      record = fetchAndLockRecord(id,traversingLockingStrategy);// fetch record and lock it for whole record operation
       context.updateMetric("recordReads", +1);
-
-      if (record == null || ORecordInternal.getRecordType(record) != ODocument.RECORD_TYPE)
-      // SKIP IT
-      {
-        return true;
-      }
-
+      if (record == null || ORecordInternal.getRecordType(record) != ODocument.RECORD_TYPE)// SKIP IT
+            return true;
       context.updateMetric("documentReads", +1);
-
       context.setVariable("current", record);
-
       if (filter(record)) {
-        if (!handleResult(record))
-        // LIMIT REACHED
-        {
-          return false;
-        }
+        if (localLockingStrategy==LOCKING_STRATEGY.KEEP_EXCLUSIVE_LOCK)
+            getDatabase().getTransaction().upgradeLockIfNeeded(id,localLockingStrategy); // upgrade lock if current is different to requested UPDATE->EX
+        if (!handleResult(record))// LIMIT REACHED
+              return false;
       }
     } finally {
-      if (record != null && localLockingStrategy != null && record.isLocked()) {
-        // CONTEXT LOCK: lock must be released (no matter if filtered or not)
-        if (localLockingStrategy == LOCKING_STRATEGY.KEEP_EXCLUSIVE_LOCK
-            || localLockingStrategy == LOCKING_STRATEGY.KEEP_SHARED_LOCK) {
-          record.unlock();
-        }
-      }
+            releaseLockRecord(record, localLockingStrategy);// release lock held on record
     }
     return true;
   }
